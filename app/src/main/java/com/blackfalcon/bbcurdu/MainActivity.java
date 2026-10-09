@@ -1,6 +1,7 @@
 package com.blackfalcon.bbcurdu;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
@@ -43,7 +44,11 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
 
-    private static final int RED = 0xFFE57373, GREEN = 0xFF2ECC71, GRAY = 0xFF9E9E9E, CARD = 0xFF121212, EDGE = 0xFF2A2A2A, BBC = 0xFFBB1919;
+    private static final int RED = 0xFFE57373, GREEN = 0xFF2ECC71, GRAY = 0xFF9E9E9E, BBC = 0xFFBB1919;
+
+    // Dynamic Theme Variables
+    private boolean isDarkMode = true;
+    private int bgColor, cardColor, edgeColor, textColor;
 
     private SharedPreferences sp;
     private final Map<String, List<Feeds.Item>> data = new HashMap<>();
@@ -57,8 +62,9 @@ public class MainActivity extends Activity {
     private final LruCache<String, Bitmap> thumbs = new LruCache<>(80);
     private final Handler handler = new Handler(Looper.getMainLooper());
 
-    private LinearLayout chipRow;
-    private TextView statusTv;
+    private LinearLayout root, chipRow;
+    private TextView themeToggleBtn, statusTv;
+    private EditText search;
     private ListView list;
     private ItemAdapter adapter;
 
@@ -72,6 +78,9 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         sp = getSharedPreferences("bbcurdu", MODE_PRIVATE);
+        isDarkMode = sp.getBoolean("isDarkMode", true);
+        
+        setupThemeColors();
         for (Source s : Source.ALL) loadCache(s.id);
         buildUi();
         rebuildChips();
@@ -81,6 +90,47 @@ public class MainActivity extends Activity {
     @Override protected void onResume() { super.onResume(); handler.post(autoRefresh); }
     @Override protected void onPause() { super.onPause(); handler.removeCallbacks(autoRefresh); }
     @Override protected void onDestroy() { super.onDestroy(); pool.shutdownNow(); imgPool.shutdownNow(); }
+
+    @Override
+    public void onBackPressed() {
+        new AlertDialog.Builder(this)
+                .setTitle("ایپ سے باہر نکلیں")
+                .setMessage("کیا آپ واقعی ایپ بند کرنا چاہتے ہیں؟")
+                .setPositiveButton("جی ہاں", (dialog, which) -> {
+                    super.onBackPressed();
+                    finish();
+                })
+                .setNegativeButton("نہیں", null)
+                .show();
+    }
+
+    private void setupThemeColors() {
+        if (isDarkMode) {
+            bgColor = Color.BLACK;
+            cardColor = 0xFF121212;
+            edgeColor = 0xFF2A2A2A;
+            textColor = Color.WHITE;
+        } else {
+            bgColor = 0xFFF0F2F5;
+            cardColor = 0xFFFFFFFF;
+            edgeColor = 0xFFDDDDDD;
+            textColor = Color.BLACK;
+        }
+    }
+
+    private void toggleTheme() {
+        isDarkMode = !isDarkMode;
+        sp.edit().putBoolean("isDarkMode", isDarkMode).apply();
+        setupThemeColors();
+        
+        root.setBackgroundColor(bgColor);
+        search.setTextColor(textColor);
+        search.setBackground(round(cardColor, edgeColor, 20));
+        themeToggleBtn.setText(isDarkMode ? "🌙" : "☀️");
+        
+        rebuildChips();
+        rebuildList();
+    }
 
     // ----------------------------------------------------------------- cache
     private static String flat(String s) { return s == null ? "" : s.replace('\t', ' ').replace('\n', ' ').replace('\r', ' '); }
@@ -157,9 +207,9 @@ public class MainActivity extends Activity {
     }
 
     private void buildUi() {
-        LinearLayout root = new LinearLayout(this);
+        root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.BLACK);
+        root.setBackgroundColor(bgColor);
         root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
 
         LinearLayout bar = new LinearLayout(this);
@@ -168,12 +218,21 @@ public class MainActivity extends Activity {
         bar.setPadding(dp(16), dp(10), dp(8), dp(10));
         TextView title = tv(21, Color.WHITE, true);
         title.setText("بی بی سی اردو • سرخیاں");
+        
+        themeToggleBtn = tv(20, Color.WHITE, false);
+        themeToggleBtn.setText(isDarkMode ? "🌙" : "☀️");
+        themeToggleBtn.setPadding(dp(10), dp(4), dp(10), dp(4));
+        themeToggleBtn.setClickable(true);
+        themeToggleBtn.setOnClickListener(v -> toggleTheme());
+
         TextView refresh = tv(22, Color.WHITE, true);
         refresh.setText("\u21BB");
-        refresh.setPadding(dp(14), dp(4), dp(14), dp(4));
+        refresh.setPadding(dp(10), dp(4), dp(14), dp(4));
         refresh.setClickable(true);
         refresh.setOnClickListener(v -> refresh());
+        
         bar.addView(title, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        bar.addView(themeToggleBtn);
         bar.addView(refresh);
 
         HorizontalScrollView hs = new HorizontalScrollView(this);
@@ -182,14 +241,14 @@ public class MainActivity extends Activity {
         chipRow.setPadding(dp(8), dp(8), dp(8), dp(4));
         hs.addView(chipRow);
 
-        EditText search = new EditText(this);
+        search = new EditText(this);
         search.setHint("سرخیوں میں تلاش کریں");
-        search.setTextColor(Color.WHITE);
+        search.setTextColor(textColor);
         search.setHintTextColor(0xFF707070);
         search.setTextSize(15);
         search.setSingleLine(true);
         search.setPadding(dp(16), dp(8), dp(16), dp(8));
-        search.setBackground(round(CARD, EDGE, 20));
+        search.setBackground(round(cardColor, edgeColor, 20));
         search.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
@@ -221,7 +280,7 @@ public class MainActivity extends Activity {
         TextView note = tv(11, 0xFF707070, false);
         note.setText("غیر سرکاری ایپ • خبریں بی بی سی اردو کے آر ایس ایس فیڈ سے • کہانی دبائیں تو ایپ کے اندر کھلتی ہے");
         note.setPadding(dp(14), dp(4), dp(14), 0);
-        TextView credit = tv(12, Color.WHITE, true);
+        TextView credit = tv(12, textColor, true);
         credit.setText("By: Black Falcon \uD83E\uDD85");
         credit.setGravity(Gravity.RIGHT);
         credit.setPadding(dp(14), dp(2), dp(14), dp(6));
@@ -256,7 +315,7 @@ public class MainActivity extends Activity {
         b.setText(label);
         b.setGravity(Gravity.CENTER);
         b.setPadding(dp(14), dp(8), dp(14), dp(8));
-        b.setBackground(round(on ? BBC : 0xFF101010, BBC, 18));
+        b.setBackground(round(on ? BBC : (isDarkMode ? 0xFF101010 : 0xFFE0E0E0), BBC, 18));
         b.setClickable(true);
         b.setOnClickListener(v -> { filter = id; rebuildChips(); rebuildList(); list.setSelection(0); });
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -303,10 +362,10 @@ public class MainActivity extends Activity {
             else if ("error".equals(st)) bad.append(bad.length() > 0 ? "، " : "").append(s.nameUr);
         }
         StringBuilder sb = new StringBuilder();
-        if (loading > 0) sb.append("لوڈ ہو رہا ہے… ").append(finished).append("/").append(Source.ALL.length).append("   ");
-        if (lastUpdated > 0) sb.append("اپڈیٹ ").append(new SimpleDateFormat("HH:mm", Locale.US).format(new Date(lastUpdated))).append("   ");
+        if (loading > 0) sb.append("لوڈ ہو رہا ہے… ").append(finished).append("/").append(Source.ALL.length).append("    ");
+        if (lastUpdated > 0) sb.append("اپڈیٹ ").append(new SimpleDateFormat("HH:mm", Locale.US).format(new Date(lastUpdated))).append("    ");
         sb.append(visible.size()).append(" خبریں");
-        if (loading == 0 && bad.length() > 0) sb.append("   •   لوڈ نہیں ہوا: ").append(bad).append(" (محفوظ خبریں دکھائی جا رہی ہیں)");
+        if (loading == 0 && bad.length() > 0) sb.append("    •    لوڈ نہیں ہوا: ").append(bad).append(" (محفوظ خبریں دکھائی جا رہی ہیں)");
         statusTv.setText(sb.toString());
     }
 
@@ -345,10 +404,10 @@ public class MainActivity extends Activity {
                 LinearLayout card = new LinearLayout(MainActivity.this);
                 card.setGravity(Gravity.CENTER_VERTICAL);
                 card.setPadding(dp(12), dp(10), dp(12), dp(10));
-                card.setBackground(round(CARD, EDGE, 14));
+                card.setBackground(round(cardColor, edgeColor, 14));
                 LinearLayout col = new LinearLayout(MainActivity.this);
                 col.setOrientation(LinearLayout.VERTICAL);
-                TextView title = tv(17, Color.WHITE, true);
+                TextView title = tv(17, textColor, true);
                 title.setLineSpacing(0, 1.15f);
                 title.setTextDirection(View.TEXT_DIRECTION_FIRST_STRONG);
                 TextView desc = tv(13, GRAY, false);
@@ -362,7 +421,7 @@ public class MainActivity extends Activity {
                 col.addView(meta);
                 ImageView img = new ImageView(MainActivity.this);
                 img.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                img.setBackground(round(0xFF1C1C1C, 0xFF1C1C1C, 10));
+                img.setBackground(round(isDarkMode ? 0xFF1C1C1C : 0xFFE5E5E5, isDarkMode ? 0xFF1C1C1C : 0xFFE5E5E5, 10));
                 img.setClipToOutline(true);
                 img.setOutlineProvider(ViewOutlineProvider.BACKGROUND);
                 card.addView(col, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
@@ -370,12 +429,18 @@ public class MainActivity extends Activity {
                 il.setMarginStart(dp(10));
                 card.addView(img, il);
                 wrap.addView(card, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-                wrap.setTag(new View[]{title, desc, meta, img});
+                wrap.setTag(new View[]{card, title, desc, meta, img});
                 convert = wrap;
             }
             View[] v = (View[]) convert.getTag();
-            TextView title = (TextView) v[0], desc = (TextView) v[1], meta = (TextView) v[2];
-            ImageView img = (ImageView) v[3];
+            LinearLayout card = (LinearLayout) v[0];
+            TextView title = (TextView) v[1], desc = (TextView) v[2], meta = (TextView) v[3];
+            ImageView img = (ImageView) v[4];
+
+            card.setBackground(round(cardColor, edgeColor, 14));
+            title.setTextColor(textColor);
+            img.setBackground(round(isDarkMode ? 0xFF1C1C1C : 0xFFE5E5E5, isDarkMode ? 0xFF1C1C1C : 0xFFE5E5E5, 10));
+
             Feeds.Item it = visible.get(pos);
             title.setText(it.title);
             if (it.desc.isEmpty()) desc.setVisibility(View.GONE);
